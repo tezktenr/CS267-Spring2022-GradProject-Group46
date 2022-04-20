@@ -7,6 +7,6 @@ Students:
 
 
 ## Folders
-- sample-graphs: contains the sample graphs' data files
-- naive: contains the naive implementation
+- **sample-graphs**: contains the sample graphs' data files
+- **naive**: contains the naive implementation
 
