@@ -3,10 +3,15 @@
  ***/
 #include <iostream>
 #include <fstream>
+#include <cstring>
+#include <string>
+#include <chrono>
+#include "graph.hpp"
 
 /********
  * PRE-PROCESSOR
  ***/
+#define IMPL_NAME "Naive"
 //#define DEBUG_MAIN
 
 
@@ -66,15 +71,33 @@ int main(int argc, char** argv)
 	char* graph_filepath = find_string_option(argc, argv, "-f", nullptr);
 	if (graph_filepath == nullptr)
 	{
-		std::cout << "Command Error: You must specify the graph file name via '-f'" std::endl;
+		std::cout << "Command Error: You must specify the graph file name via '-f'" << std::endl;
 		return 1;
-	}
+	}	
+	Graph_t graph(graph_filepath);
 	#ifdef DEBUG_MAIN
-	std::cout << "graph file name: " << graph_filepath << std::endl;
+	std::cout << "| " << graph_filepath << std::endl;
+	std::string test_line;
+	std::ifstream test_txt(graph_filepath);
+	std::cout << "+--------------" << std::endl;
+	while (std::getline(test_txt, test_line)) std::cout << "| " << test_line << std::endl;
+	std::cout << std::endl;
+	test_txt.close();
 	#endif
-	std::ifstream graph_txt(graph_filepath);
-	
 
+
+	// Main Algorithms	
+	auto start_time = std::chrono::steady_clock::now();
+
+
+
+
+	auto end_time = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff = end_time - start_time;
+    double seconds = diff.count();
+
+    // Finalize
+    std::cout << "Runtime (" << IMPL_NAME << ") = " << seconds << " seconds" << std::endl;
 
 	return 0;
 }
