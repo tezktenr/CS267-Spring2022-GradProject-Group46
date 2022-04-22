@@ -49,8 +49,9 @@ static __device__ unsigned long long hi = 0;
 static __device__ int wSize = 0;
 
 struct EdgeInfo {
-    int beg;  // beginning of range (shifted by 1) | is range inverted or not
-    int end;  // end of range (shifted by 1) | plus or minus (1 = minus, 0 = plus or zero)
+//    int beg;  // beginning of range (shifted by 1) | is range inverted or not
+//    int end;  // end of range (shifted by 1) | plus or minus (1 = minus, 0 = plus or zero)
+    bool minus;
 };
 
 struct Graph {
@@ -274,7 +275,7 @@ static __global__ void init(const int edges, const int nodes, int* const nlist, 
 
     // set minus if graph weight is -1
     for (int j = from; j < edges; j += incr) {
-        einfo[j].end = (eweight[j] == -1) ? 1 : 0;
+        einfo[j].minus = (eweight[j] == -1) ? 1 : 0;
     }
 
     // zero out inTree and negCnt
@@ -292,7 +293,6 @@ static __global__ void init2(const int edges, const int nodes, const int root, i
     // initialize
     for (int j = from; j < edges; j += incr) nlist[j] &= ~1;
     for (int j = from; j < nodes; j += incr) parent[j] = (root == j) ? (INT_MAX & ~3) : -1;
-    for (int j = from; j < nodes; j += incr) label[j] = 1;
     if (from == 0) {
         queue[0] = root;
         *tail = 1;
@@ -342,59 +342,31 @@ static __global__ void verfiy_generateSpanningTree(const int nodes, const int ed
     }
 }
 
-static __global__ void rootcount(const int* const parent, const int* const queue, int* const __restrict__ label, const int level, int start, int end)
-{
-    const int from = threadIdx.x + blockIdx.x * ThreadsPerBlock;
-    const int incr = gridDim.x * ThreadsPerBlock;
-    // bottom up: push counts
-    for (int i = start + from; i < end; i += incr) {
-        const int node = queue[i];
-        atomicAdd(&label[parent[node] >> 2], label[node]);
-    }
-}
-
 static __global__ void treelabel(const int nodes, const int* const __restrict__ nindex, volatile int* const __restrict__ nlist, EdgeInfo* const __restrict__ einfo, volatile int* const __restrict__ inTree, volatile int* const __restrict__ negCnt, const int* const __restrict__ parent, const int* const __restrict__ queue, int* const __restrict__ label, const int level, int start, int end)
 {
     const int from = (threadIdx.x + blockIdx.x * ThreadsPerBlock) / warpsize;
     const int incr = (gridDim.x * ThreadsPerBlock) / warpsize;
     const int lane = threadIdx.x % warpsize;
     //cuv
-    // top down: label tree + set nlist flag + set edge info + move tree nodes to front + make parent edge first in list
+    // top down: label tree + set nlist flag (whether in tree) + move tree nodes to front
     for (int i = start + from; i < end; i += incr) {
         const int node = queue[i];
         const int par = parent[node] >> 2;
-        const int nodelabel = label[node];
         const int beg = nindex[node];
         const int end = nindex[node + 1];
 
         // set nlist flag + set edge info
-        int lbl = (nodelabel >> 1) + 1;
         for (int j = beg + lane; __any_sync(mask, j < end); j += warpsize) {
-            int lblinc = 0;
             int neighbor = -1;
             bool cond = false;
             if (j < end) {
                 neighbor = nlist[j] >> 1;
                 cond = (neighbor != par) && ((parent[neighbor] >> 2) == node);
                 if (cond) {
-                    lblinc = label[neighbor];
+                    label[neighbor] = label[node] ^ einfo[j].minus;
+                    nlist[j] |= 1;  // child edge is in tree
                 }
             }
-            const int currcount = lblinc;
-            for (int d = 1; d < 32; d *= 2) {
-                const int tmp = __shfl_up_sync(mask, lblinc, d);
-                if (lane >= d) lblinc += tmp;
-            }
-            lbl += lblinc;
-
-            if (cond) {
-                const int lblval = (lbl - currcount) << 1;
-                label[neighbor] = lblval;
-                einfo[j].beg = lblval;
-                einfo[j].end = (einfo[j].end & 1) | ((lbl - 1) << 1);
-                nlist[j] |= 1;  // child edge is in tree
-            }
-            lbl = __shfl_sync(mask, lbl, 31);
         }
 
         // move tree nodes to front
@@ -403,10 +375,8 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
             enum {none, some, left, right};
             if (len <= warpsize) {
                 const int src = beg + lane;
-                int b, e, in, neg,  n, state = none;
+                int in, neg,  n, state = none;
                 if (lane < len) {
-                    b = einfo[src].beg;
-                    e = einfo[src].end;
                     in = inTree[src];
                     neg = negCnt[src];
                     n = nlist[src];
@@ -419,8 +389,6 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                 const int pfsr = __popc(balr & ~(-1 << lane));
                 const int pos = beg + ((state == right) ? (len - 1 - pfsr) : pfsl);
                 if (state != none) {
-                    einfo[pos].beg = b;
-                    einfo[pos].end = e;
                     inTree[pos] = in;
                     negCnt[pos] = neg;
                     nlist[pos] = n;
@@ -431,8 +399,6 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                 int state = some;
                 int read = beg + min(warpsize, len);
                 int src = beg + lane;
-                int b = einfo[src].beg;
-                int e = einfo[src].end;
                 int n = nlist[src];
                 int in = inTree[src];
                 int neg = negCnt[src];
@@ -445,22 +411,16 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                     const int ball = __ballot_sync(mask, state == left);
                     const int pfsl = __popc(ball & ~(-1 << lane));
                     if (state == left) {
-                        int oldb, olde, oldin, oldneg, oldn;
+                        int oldin, oldneg, oldn;
                         const int pos = lp + pfsl;
                         if (pos >= read) {
-                            oldb = einfo[pos].beg;
-                            olde = einfo[pos].end;
                             oldin = inTree[pos];
                             oldneg = negCnt[pos];
                             oldn = nlist[pos];
                         }
-                        einfo[pos].beg = b;
-                        einfo[pos].end = e;
                         inTree[pos] = in;
                         negCnt[pos] = neg;
                         nlist[pos] = n;
-                        b = oldb;
-                        e = olde;
                         in = oldin;
                         neg = oldneg;
                         n = oldn;
@@ -471,22 +431,16 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                     const int balr = __ballot_sync(mask, state == right);
                     const int pfsr = __popc(balr & ~(-1 << lane));
                     if (state == right) {
-                        int oldb, olde, oldin, oldneg, oldn;
+                        int  oldin, oldneg, oldn;
                         const int pos = rp - pfsr;
                         if (pos >= read) {
-                            oldb = einfo[pos].beg;
-                            olde = einfo[pos].end;
                             oldin = inTree[pos];
                             oldneg = negCnt[pos];
                             oldn = nlist[pos];
                         }
-                        einfo[pos].beg = b;
-                        einfo[pos].end = e;
                         inTree[pos] = in;
                         negCnt[pos] = neg;
                         nlist[pos] = n;
-                        b = oldb;
-                        e = olde;
                         in = oldin;
                         neg = oldneg;
                         n = oldn;
@@ -499,8 +453,6 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                         if (state == none) {
                             const int pos = read + pfs;
                             if (pos <= rp) {
-                                b = einfo[pos].beg;
-                                e = einfo[pos].end;
                                 in = inTree[pos];
                                 neg = negCnt[pos];
                                 n = nlist[pos];
@@ -513,56 +465,7 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
             }
         }
 
-        //find paredge here
-        int paredge = -1;
-        for (int j = beg + lane; __any_sync(mask, j < end); j += warpsize) {
-            if (j < end) {
-                const int neighbor = nlist[j] >> 1;
-                if (neighbor == par) {
-                    paredge = j;
-                }
-            }
-            if (__any_sync(mask, paredge >= 0)) break;
-        }
-        int pos = -1;
-        for (int j = beg + lane; __any_sync(mask, j < end); j += warpsize) {
-            if (j < end) {
-                const int neighbor = nlist[j] >> 1;
-                if (((parent[neighbor] >> 2) != node)) {
-                    pos = j;
-                }
-            }
-            if (__any_sync(mask, pos >= 0)) break;
-        }
-        unsigned int bal = __ballot_sync(mask, pos >= 0);
-        const int lid = __ffs(bal) - 1;
-        pos = __shfl_sync(mask, pos, lid);
-        if (paredge >= 0) {  // only one thread per warp
-            einfo[paredge].beg = nodelabel | 1;
-            einfo[paredge].end = (einfo[paredge].end & 1) | ((lbl - 1) << 1);
-            nlist[paredge] |= 1;
-            if (paredge != beg) {
-                if (paredge != pos) {
-                    swap(nlist[pos], nlist[paredge]);
-                    swap(einfo[pos], einfo[paredge]);
-                    swap(inTree[pos], inTree[paredge]);
-                    swap(negCnt[pos], negCnt[paredge]);
-                    paredge = pos;
-                }
-                if (paredge != beg) {
-                    swap(nlist[beg], nlist[paredge]);
-                    swap(einfo[beg], einfo[paredge]);
-                    swap(inTree[beg], inTree[paredge]);
-                    swap(negCnt[beg], negCnt[paredge]);
-                }
-            }
-        }
-        __syncwarp();
-
         if (verify && (lane == 0)) {
-            if (i == 0) {
-                if (lbl != nodes) {printf("ERROR: lbl mismatch, lbl %d nodes %d\n", lbl, nodes); asm("trap;");}
-            }
             int j = beg;
             while ((j < end) && (nlist[j] & 1)) j++;
             while ((j < end) && !(nlist[j] & 1)) j++;
@@ -587,23 +490,11 @@ static __global__ void processCycles(const int nodes, const int* const __restric
     const int incr = (gridDim.x * ThreadsPerBlock) / warpsize;
     const int lane = threadIdx.x % warpsize;
     for (int i = from; i < nodes; i += incr) {
-        const int target0 = label[i];
-        const int target1 = target0 | 1;
         int j = nindex[i + 1] - 1 - lane;
         while ((j >= nindex[i]) && !(nlist[j] & 1)) {
             int curr = nlist[j] >> 1;
             if (curr > i) {  // only process edges in one direction
-                int sum = 0;
-                while (label[curr] != target0) {
-                    int k = nindex[curr];
-                    while ((einfo[k].beg & 1) == ((einfo[k].beg <= target1) && (target0 <= einfo[k].end))) k++;
-                    if (verify) {
-                        if ((k >= nindex[curr + 1]) || !(nlist[k] & 1)) {printf("ERROR: couldn't find path\n"); asm("trap;");}
-                    }
-                    sum += einfo[k].end & 1;
-                    curr = nlist[k] >> 1;
-                }
-                minus[j] = sum & 1;
+                minus[j] = label[i] ^ label[curr];
             }
             j -= warpsize;
         }
@@ -623,7 +514,7 @@ static __global__ void initMinus(const int edges, const int nodes, const int* co
     for (int i = from; i < nodes; i += incr) {
         int j = nindex[i];
         while ((j < nindex[i + 1]) && (nlist[j] & 1)) {
-            minus[j] = einfo[j].end & 1;
+            minus[j] = einfo[j].minus & 1;
             j++;
         }
     }
@@ -820,7 +711,7 @@ int main(int argc, char* argv[])
     // allocate all memory
     int* const border = new int [g.nodes + 2];  // maybe make smaller
     int* const inTree = new int [g.edges];  // how often edge was in tree
-    int* const label = new int [g.nodes];  // first used as count, then as label, and finally as CC label
+    int* const label = new int [g.nodes];  // first used as label to represent whether it is odd number of -1 from root to current node, and finally as CC label
     int* const inCC = new int [g.nodes];  // how often node was in largest CC or at an even distance from largest CC
     int* const negCnt = new int [g.edges];  // how often edge was negative
     int* const root = new int [g.nodes];  // tree roots
@@ -916,9 +807,6 @@ int main(int argc, char* argv[])
         //root count
         //#1
         timer.start();
-        for (int level = levels - 1; level > 0; level--) {
-            rootcount<<<blocks, ThreadsPerBlock>>>(d_parent, d_queue, d_label, level, border[level],  border[level + 1]);
-        }
         if (verify) {
             if (cudaSuccess != cudaMemcpy((void*)&label[root[iter % g.nodes]], (void*)&d_label[root[iter % g.nodes]], sizeof(int), cudaMemcpyDeviceToHost)) {fprintf(stderr, "ERROR: copying to host failed\n"); exit(-1);}
             if (label[root[iter % g.nodes]] != g.nodes) {printf("ERROR: root count mismatch\n"); exit(-1);}
