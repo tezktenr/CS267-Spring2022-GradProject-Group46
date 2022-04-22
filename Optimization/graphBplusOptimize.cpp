@@ -43,8 +43,9 @@ https://cs.txstate.edu/~burtscher/research/graphBplus/.
 static const bool verify = false;  // set to false for better performance
 
 struct EdgeInfo {
-    int beg;  // beginning of range (shifted by 1) | is range inverted or not
-    int end;  // end of range (shifted by 1) | plus or minus (1 = minus, 0 = plus or zero)
+//    int beg;  // beginning of range (shifted by 1) | is range inverted or not
+//    int end;  // end of range (shifted by 1) | plus or minus (1 = minus, 0 = plus or zero)
+    bool minus;
 };
 
 struct Graph {
@@ -269,7 +270,7 @@ static void init(const Graph& g, int* const inCC, EdgeInfo* const einfo, int* co
     // set minus if graph weight is -1
 #pragma omp parallel for default(none) shared(g, einfo)
     for (int j = 0; j < g.edges; j++) {
-        einfo[j].end = (g.eweight[j] == -1) ? 1 : 0;
+        einfo[j].minus = (g.eweight[j] == -1) ? 1 : 0;
     }
 
     // zero out inTree and negCnt
@@ -338,44 +339,33 @@ static double generateSpanningTree(const Graph& g, const int root, const int see
     CPUTimer timer;
     timer.start();
 
-    // bottom up: push counts
-#pragma omp parallel for default(none) shared(g, label, border)
-    for (int i = 0; i < g.nodes; i++) label[i] = 1;
-    for (int level = levels - 1; level > 0; level--) {  // skip level 0
-#pragma omp parallel for default(none) shared(level, queue, label, parent, border)
-        for (int i = border[level]; i < border[level + 1]; i++) {
-            const int node = queue[i];
-#pragma omp atomic
-            label[parent[node] >> 2] += label[node];
-        }
-    }
-    if (verify) {
-        if (label[root] != g.nodes) {printf("ERROR: root count mismatch\n"); exit(-1);}
-    }
+//    // bottom up: push counts
+//#pragma omp parallel for default(none) shared(g, label, border)
+//    for (int i = 0; i < g.nodes; i++) label[i] = 1;
+//    for (int level = levels - 1; level > 0; level--) {  // skip level 0
+//#pragma omp parallel for default(none) shared(level, queue, label, parent, border)
+//        for (int i = border[level]; i < border[level + 1]; i++) {
+//            const int node = queue[i];
+//#pragma omp atomic
+//            label[parent[node] >> 2] += label[node];
+//        }
+//    }
+//    if (verify) {
+//        if (label[root] != g.nodes) {printf("ERROR: root count mismatch\n"); exit(-1);}
+//    }
 
-    // top down: label tree + set nlist flag + set edge info + move tree nodes to front + make parent edge first in list
+    // top down: label tree + set nlist flag (whether in tree) + move tree nodes to front
     label[root] = 0;
     for (int level = 0; level < levels; level++) {
 #pragma omp parallel for default(none) shared(g, level, queue, parent, label, einfo, inTree, negCnt, border)
         for (int i = border[level]; i < border[level + 1]; i++) {
             const int node = queue[i];
-            const int par = parent[node] >> 2;
-            const int nodelabel = label[node];
             const int beg = g.nindex[node];
-            int paredge = -1;
-            int lbl = (nodelabel >> 1) + 1;
             int pos = beg;
             for (int j = beg; j < g.nindex[node + 1]; j++) {
                 const int neighbor = g.nlist[j] >> 1;
-                if (neighbor == par) {
-                    paredge = j;
-                } else if ((parent[neighbor] >> 2) == node) {
-                    const int count = label[neighbor];
-                    label[neighbor] = lbl << 1;
-                    lbl += count;
-                    // set child edge info
-                    einfo[j].beg = label[neighbor];
-                    einfo[j].end = (einfo[j].end & 1) | ((lbl - 1) << 1);
+                if ((parent[neighbor] >> 2) == node) {
+                    label[neighbor] = label[node] ^ einfo[j].minus;
                     g.nlist[j] |= 1;  // child edge is in tree
                     // swap
                     if (pos < j) {
@@ -383,38 +373,12 @@ static double generateSpanningTree(const Graph& g, const int root, const int see
                         std::swap(einfo[pos], einfo[j]);
                         std::swap(inTree[pos], inTree[j]);
                         std::swap(negCnt[pos], negCnt[j]);
-                        if (paredge == pos) paredge = j;
                     }
                     pos++;
                 }
             }
-            if (paredge >= 0) {
-                // set parent edge info
-                einfo[paredge].beg = nodelabel | 1;
-                einfo[paredge].end = (einfo[paredge].end & 1) | ((lbl - 1) << 1);
-                g.nlist[paredge] |= 1;  // parent edge is in tree
-                // move parent edge to front of list
-                if (paredge != beg) {
-                    if (paredge != pos) {
-                        std::swap(g.nlist[pos], g.nlist[paredge]);
-                        std::swap(einfo[pos], einfo[paredge]);
-                        std::swap(inTree[pos], inTree[paredge]);
-                        std::swap(negCnt[pos], negCnt[paredge]);
-                        paredge = pos;
-                    }
-                    if (paredge != beg) {
-                        std::swap(g.nlist[beg], g.nlist[paredge]);
-                        std::swap(einfo[beg], einfo[paredge]);
-                        std::swap(inTree[beg], inTree[paredge]);
-                        std::swap(negCnt[beg], negCnt[paredge]);
-                    }
-                }
-            }
 
             if (verify) {
-                if (i == 0) {
-                    if (lbl != g.nodes) {printf("ERROR: lbl mismatch\n"); exit(-1);}
-                }
                 int j = beg;
                 while ((j < g.nindex[node + 1]) && (g.nlist[j] & 1)) j++;
                 while ((j < g.nindex[node + 1]) && !(g.nlist[j] & 1)) j++;
@@ -450,7 +414,7 @@ static double initMinus(const Graph& g, const EdgeInfo* const einfo, bool* const
     for (int i = 0; i < g.nodes; i++) {
         int j = g.nindex[i];
         while ((j < g.nindex[i + 1]) && (g.nlist[j] & 1)) {
-            minus[j] = einfo[j].end & 1;
+            minus[j] = einfo[j].minus;
             j++;
         }
     }
@@ -471,17 +435,7 @@ static double processCycles(const Graph& g, const int* const label, EdgeInfo* co
         while ((j >= g.nindex[i]) && !(g.nlist[j] & 1)) {
             int curr = g.nlist[j] >> 1;
             if (curr > i) {  // only process edges in one direction
-                int sum = 0;
-                while (label[curr] != target0) {
-                    int k = g.nindex[curr];
-                    while ((einfo[k].beg & 1) == ((einfo[k].beg <= target1) && (target0 <= einfo[k].end))) k++;
-                    if (verify) {
-                        if ((k >= g.nindex[curr + 1]) || !(g.nlist[k] & 1)) {printf("ERROR: couldn't find path\n"); exit(-1);}
-                    }
-                    sum += einfo[k].end & 1;
-                    curr = g.nlist[k] >> 1;
-                }
-                minus[j] = sum & 1;  // make cycle have even number of minuses
+                minus[j] = label[i] ^ label[curr];
             }
             j--;
         }
@@ -630,7 +584,7 @@ int main(int argc, char* argv[])
     bool* const minus = new bool [g.edges];
     int* const parent = new int [g.nodes];
     int* const queue = new int [g.nodes];  // first used as queue, then as CC size
-    int* const label = new int [g.nodes];  // first used as count, then as label, and finally as CC label
+    int* const label = new int [g.nodes];  // first used as label to represent whether it is odd number of -1 from root to current node, and finally as CC label
     int* const border = new int [g.nodes + 2];  // maybe make smaller
     int* const inCC = new int [g.nodes];  // how often node was in largest CC or at an even distance from largest CC
     int* const inTree = new int [g.edges];  // how often edge was in tree
