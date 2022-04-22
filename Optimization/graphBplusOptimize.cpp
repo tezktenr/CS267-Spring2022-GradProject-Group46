@@ -339,21 +339,6 @@ static double generateSpanningTree(const Graph& g, const int root, const int see
     CPUTimer timer;
     timer.start();
 
-//    // bottom up: push counts
-//#pragma omp parallel for default(none) shared(g, label, border)
-//    for (int i = 0; i < g.nodes; i++) label[i] = 1;
-//    for (int level = levels - 1; level > 0; level--) {  // skip level 0
-//#pragma omp parallel for default(none) shared(level, queue, label, parent, border)
-//        for (int i = border[level]; i < border[level + 1]; i++) {
-//            const int node = queue[i];
-//#pragma omp atomic
-//            label[parent[node] >> 2] += label[node];
-//        }
-//    }
-//    if (verify) {
-//        if (label[root] != g.nodes) {printf("ERROR: root count mismatch\n"); exit(-1);}
-//    }
-
     // top down: label tree + set nlist flag (whether in tree) + move tree nodes to front
     label[root] = 0;
     for (int level = 0; level < levels; level++) {
