@@ -376,7 +376,9 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
             if (len <= warpsize) {
                 const int src = beg + lane;
                 int in, neg,  n, state = none;
+                bool e = none;
                 if (lane < len) {
+                    e = einfo[src].minus;
                     in = inTree[src];
                     neg = negCnt[src];
                     n = nlist[src];
@@ -389,6 +391,7 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                 const int pfsr = __popc(balr & ~(-1 << lane));
                 const int pos = beg + ((state == right) ? (len - 1 - pfsr) : pfsl);
                 if (state != none) {
+                    einfo[pos].minus = e;
                     inTree[pos] = in;
                     negCnt[pos] = neg;
                     nlist[pos] = n;
@@ -399,6 +402,7 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                 int state = some;
                 int read = beg + min(warpsize, len);
                 int src = beg + lane;
+                int e = einfo[src].minus;
                 int n = nlist[src];
                 int in = inTree[src];
                 int neg = negCnt[src];
@@ -412,15 +416,19 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                     const int pfsl = __popc(ball & ~(-1 << lane));
                     if (state == left) {
                         int oldin, oldneg, oldn;
+                        bool olde;
                         const int pos = lp + pfsl;
                         if (pos >= read) {
+                            olde = einfo[pos].minus;
                             oldin = inTree[pos];
                             oldneg = negCnt[pos];
                             oldn = nlist[pos];
                         }
+                        einfo[pos].minus = e;
                         inTree[pos] = in;
                         negCnt[pos] = neg;
                         nlist[pos] = n;
+                        e = olde;
                         in = oldin;
                         neg = oldneg;
                         n = oldn;
@@ -432,15 +440,19 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                     const int pfsr = __popc(balr & ~(-1 << lane));
                     if (state == right) {
                         int  oldin, oldneg, oldn;
+                        bool olde;
                         const int pos = rp - pfsr;
                         if (pos >= read) {
+                            olde = einfo[pos].minus;
                             oldin = inTree[pos];
                             oldneg = negCnt[pos];
                             oldn = nlist[pos];
                         }
+                        einfo[pos].minus = e;
                         inTree[pos] = in;
                         negCnt[pos] = neg;
                         nlist[pos] = n;
+                        e = olde;
                         in = oldin;
                         neg = oldneg;
                         n = oldn;
@@ -453,6 +465,7 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
                         if (state == none) {
                             const int pos = read + pfs;
                             if (pos <= rp) {
+                                e = einfo[pos].minus;
                                 in = inTree[pos];
                                 neg = negCnt[pos];
                                 n = nlist[pos];
