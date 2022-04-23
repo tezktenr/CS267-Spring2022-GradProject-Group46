@@ -345,11 +345,12 @@ static double generateSpanningTree(const Graph& g, const int root, const int see
 #pragma omp parallel for default(none) shared(g, level, queue, parent, label, einfo, inTree, negCnt, border)
         for (int i = border[level]; i < border[level + 1]; i++) {
             const int node = queue[i];
+            const int par = parent[node] >> 2;
             const int beg = g.nindex[node];
             int pos = beg;
             for (int j = beg; j < g.nindex[node + 1]; j++) {
                 const int neighbor = g.nlist[j] >> 1;
-                if ((parent[neighbor] >> 2) == node) {
+                if ((neighbor != par) && ((parent[neighbor] >> 2) == node)) {
                     label[neighbor] = label[node] ^ einfo[j].minus;
                     g.nlist[j] |= 1;  // child edge is in tree
                     // swap
