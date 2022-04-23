@@ -347,10 +347,13 @@ static double generateSpanningTree(const Graph& g, const int root, const int see
             const int node = queue[i];
             const int par = parent[node] >> 2;
             const int beg = g.nindex[node];
+            int paredge = -1;
             int pos = beg;
             for (int j = beg; j < g.nindex[node + 1]; j++) {
                 const int neighbor = g.nlist[j] >> 1;
-                if ((neighbor != par) && ((parent[neighbor] >> 2) == node)) {
+                if (neighbor == par) {
+                    paredge = j;
+                } else if ((parent[neighbor] >> 2) == node) {
                     label[neighbor] = label[node] ^ einfo[j].minus;
                     g.nlist[j] |= 1;  // child edge is in tree
                     // swap
@@ -359,8 +362,29 @@ static double generateSpanningTree(const Graph& g, const int root, const int see
                         std::swap(einfo[pos], einfo[j]);
                         std::swap(inTree[pos], inTree[j]);
                         std::swap(negCnt[pos], negCnt[j]);
+                        if (paredge == pos) paredge = j;
                     }
                     pos++;
+                }
+            }
+            if (paredge >= 0) {
+                // set parent edge info
+                g.nlist[paredge] |= 1;  // parent edge is in tree
+                // move parent edge to front of list
+                if (paredge != beg) {
+                    if (paredge != pos) {
+                        std::swap(g.nlist[pos], g.nlist[paredge]);
+                        std::swap(einfo[pos], einfo[paredge]);
+                        std::swap(inTree[pos], inTree[paredge]);
+                        std::swap(negCnt[pos], negCnt[paredge]);
+                        paredge = pos;
+                    }
+                    if (paredge != beg) {
+                        std::swap(g.nlist[beg], g.nlist[paredge]);
+                        std::swap(einfo[beg], einfo[paredge]);
+                        std::swap(inTree[beg], inTree[paredge]);
+                        std::swap(negCnt[beg], negCnt[paredge]);
+                    }
                 }
             }
 
