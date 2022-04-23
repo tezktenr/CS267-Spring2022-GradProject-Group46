@@ -478,6 +478,50 @@ static __global__ void treelabel(const int nodes, const int* const __restrict__ 
             }
         }
 
+        //find paredge here
+        int paredge = -1;
+        for (int j = beg + lane; __any_sync(mask, j < end); j += warpsize) {
+            if (j < end) {
+                const int neighbor = nlist[j] >> 1;
+                if (neighbor == par) {
+                    paredge = j;
+                }
+            }
+            if (__any_sync(mask, paredge >= 0)) break;
+        }
+        int pos = -1;
+        for (int j = beg + lane; __any_sync(mask, j < end); j += warpsize) {
+            if (j < end) {
+                const int neighbor = nlist[j] >> 1;
+                if (((parent[neighbor] >> 2) != node)) {
+                    pos = j;
+                }
+            }
+            if (__any_sync(mask, pos >= 0)) break;
+        }
+        unsigned int bal = __ballot_sync(mask, pos >= 0);
+        const int lid = __ffs(bal) - 1;
+        pos = __shfl_sync(mask, pos, lid);
+        if (paredge >= 0) {  // only one thread per warp
+            nlist[paredge] |= 1;
+            if (paredge != beg) {
+                if (paredge != pos) {
+                    swap(nlist[pos], nlist[paredge]);
+                    swap(einfo[pos], einfo[paredge]);
+                    swap(inTree[pos], inTree[paredge]);
+                    swap(negCnt[pos], negCnt[paredge]);
+                    paredge = pos;
+                }
+                if (paredge != beg) {
+                    swap(nlist[beg], nlist[paredge]);
+                    swap(einfo[beg], einfo[paredge]);
+                    swap(inTree[beg], inTree[paredge]);
+                    swap(negCnt[beg], negCnt[paredge]);
+                }
+            }
+        }
+        __syncwarp();
+
         if (verify && (lane == 0)) {
             int j = beg;
             while ((j < end) && (nlist[j] & 1)) j++;
@@ -527,7 +571,7 @@ static __global__ void initMinus(const int edges, const int nodes, const int* co
     for (int i = from; i < nodes; i += incr) {
         int j = nindex[i];
         while ((j < nindex[i + 1]) && (nlist[j] & 1)) {
-            minus[j] = einfo[j].minus & 1;
+            minus[j] = einfo[j].minus;
             j++;
         }
     }
