@@ -5,4 +5,4 @@
 #SBATCH -t 00:30:00
 #SBATCH --gres=gpu:1
 
-./graphBplusOptimization ../../graph.csv 100 new.csv
+./graphBplusOptimization ~/dataset/amazonDigitalMusic_core5_edges2.csv 100 music_org.csv
