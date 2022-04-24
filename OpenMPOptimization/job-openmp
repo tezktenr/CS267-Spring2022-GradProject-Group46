@@ -10,6 +10,9 @@ export OMP_NUM_THREADS=68
 export OMP_PLACES=cores
 export OMP_PROC_BIND=spread
 
+input_csv=${1}
+output_csv=${2}
+
 #run the application:
-srun -n 1 -c 68 --cpu_bind=cores ./openmp ~/dataset/amazonDigitalMusic_core5_edges2.csv 100 music_org.csv
+srun -n 1 -c 68 --cpu_bind=cores ./openmp ~/dataset/${input_csv} 1000 ${output_csv}
 
