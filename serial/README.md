@@ -34,5 +34,24 @@ student@cori04:~/gradproj/build> make
 
 Then, we could run the code via:
 ```
-student@cori04:~/gradproj/build> ./naive -f ../../sample-graphs/sample_graph.txt
+student@cori04:~/gradproj/build> ./serial -f ../../sample-graphs/sample_graph.csv -n 1000
 ```
+
+## Command Line Args
+```
+Check the Usage:
+  -h: see this help
+  -f <filename>: refer to the graph file name
+  -n <num>: number of spanning trees to generate
+  -o <filename>: refer to the output file for correctness
+  -s <seed_num>: the seed number
+```
+
+## Checking Correctness
+To check the correctness for the code on "[sample_graph.csv](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/sample-graphs/sample_graph.csv)" with seed 1:
+```
+student@cori04:~/gradproj/build> ./serial -f ../../sample-graphs/sample_graph.csv -n 1000 -s 1 -o serial.out
+student@cori04:~/gradproj/build> diff serial.out ../sample_graphs_s1_n1000.correct.out
+```
+
+
