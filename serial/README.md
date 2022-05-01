@@ -51,7 +51,7 @@ Check the Usage:
 To check the correctness for the code on "[sample_graph.csv](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/sample-graphs/sample_graph.csv)" with seed 1:
 ```
 student@cori04:~/gradproj/build> ./serial -f ../../sample-graphs/sample_graph.csv -n 1000 -s 1 -o serial.out
-student@cori04:~/gradproj/build> diff serial.out ../sample_graphs_s1_n1000.correct.out
+student@cori04:~/gradproj/build> diff serial.out ../../correctness/sample_graph_s1_n1000.correct.out
 ```
 
 
