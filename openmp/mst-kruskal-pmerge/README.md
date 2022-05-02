@@ -1,5 +1,5 @@
-# Serial Implementation
-This is the serial implementation for finding the set of nearest balanced states of a signed graph
+# OpenMP Implementation (Kruskal with PMerge)
+This is the OpenMP implementation (Kruskal with PMerge) for finding the set of nearest balanced states of a signed graph
 
 ## Building Our Code
 First, we need to make sure that the CMake module is loaded and that the GNU compiler is selected.
@@ -34,24 +34,26 @@ student@cori04:~/gradproj/build> make
 
 Then, we could run the code via:
 ```
-student@cori04:~/gradproj/build> ./serial -f ../../sample-graphs/sample_graph.csv -n 1000
+student@cori04:~/gradproj/build> sbatch job-openmp
 ```
 
-## Command Line Args
-```
-Check the Usage:
-  -h: see this help
-  -f <filename>: refer to the graph file name
-  -n <num>: number of spanning trees to generate
-  -o <filename>: refer to the output file for correctness
-  -s <seed_num>: the seed number
+## Profiling
+You should uncomment the the following macro in "main.cpp" to perform profiling:
+```C++
+#define PROFILING
 ```
 
 ## Checking Correctness
-To check the correctness for the code on "[sample_graph.csv](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/sample-graphs/sample_graph.csv)" with seed 1:
+You **must uncomment** the following marcro in "main.cpp" to perform correctness check:
+```C++
+#define TEST_CORRECTNESS
 ```
-student@cori04:~/gradproj/build> ./serial -f ../../sample-graphs/sample_graph.csv -n 1000 -s 1 -o serial.out
-student@cori04:~/gradproj/build> diff serial.out ../../correctness/sample_graph_s1_n1000.correct.out
+Generating the output files is similar to the serial implementation. To run with 1000 iterations and seed 1, simply add the following line to "job-openmp":
 ```
-
+srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/graph2.csv -n 1000 -s 1 -o openmp.out
+```
+Then, run with
+```
+student@cori04:~/gradproj/build> sbatch job-openmp
+```
 
