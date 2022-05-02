@@ -22,7 +22,7 @@
 /********
  * PRE-PROCESSOR
  ***/
-//#define DEBUG_GRAPH
+#define DEBUG_GRAPH
 
 
 /********
@@ -55,10 +55,10 @@ class Edge_t {
 		Edge_t() = delete;
 		
 		Edge_t(int v1, int v2, int w)
-			:v1{v1}, v2{v2}, w{w}
+			:v1{v1}, v2{v2}, w{(w==-1)?-1:1}
 		{
 			if (v1 == v2) throw EdgeException("Detected a free loop that got inserted");
-			if (w != -1 && w != 1) throw EdgeException("Detected an edge with invalid weight");
+			if (w < -1 || w > 1) throw EdgeException("Detected an edge with invalid weight");
 		}
 
 		// Operator Overloading
@@ -115,7 +115,7 @@ class UndirectedGraph_t {
 			// Skip the first line is "From Node ID, To Node ID, Edge Weight"
 			std::string line;
 			std::getline(graph_csv, line);
-			if (line != "From Node ID, To Node ID, Edge Weight") throw GraphException("Incorrect format of graph csv file (first line)");
+			if (line != "From Node ID,To Node ID,Weight") throw GraphException("Incorrect format of graph csv file (first line)");
 
 			// Error handling
 			unsigned int self_loops = 0, duplicates = 0, inconsistent = 0;
@@ -180,7 +180,7 @@ class UndirectedGraph_t {
 
 			#ifdef DEBUG_GRAPH
 			std::cout << "Graph read complete!" << std::endl;
-			std::cout << "Read from file: " << V << " nodes and " << edges.size() << " edges" << std::endl;
+			std::cout << "Read from file: " << numNodes << " nodes and " << allEdges.size() << " edges" << std::endl;
 			std::cout << " - skipped " << self_loops << " self loops" << std::endl;
 			std::cout << " - skipped " << duplicates << " duplicate edges" << std::endl;
 			std::cout << " - skipped " << inconsistent << " inconsistent edges" << std::endl;

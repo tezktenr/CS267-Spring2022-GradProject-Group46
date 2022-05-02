@@ -1,0 +1,3 @@
+*.csv
+*.zip
+!amazonDigitalMusic_core5_edges2.csv

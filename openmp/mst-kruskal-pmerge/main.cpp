@@ -11,6 +11,8 @@
 #include <algorithm>
 #include <chrono>
 
+#include <omp.h>
+
 #include "mst.hpp"
 #include "graph.hpp"
 #include "union_find.hpp"
@@ -19,8 +21,32 @@
 /********
  * PRE-PROCESSOR
  ***/
-#define IMPL_NAME "Serial"
+#define IMPL_NAME "Openmp"
+
+#define PROFILING
+//#define TEST_CORRECTNESS
 //#define DEBUG_MAIN
+
+
+/********
+ * PROFILING
+ ***/
+std::chrono::time_point<std::chrono::steady_clock> gen_random_start;
+std::chrono::time_point<std::chrono::steady_clock> gen_random_end;
+std::chrono::time_point<std::chrono::steady_clock> find_mst_start;
+std::chrono::time_point<std::chrono::steady_clock> find_mst_end;
+std::chrono::time_point<std::chrono::steady_clock> clear_start;
+std::chrono::time_point<std::chrono::steady_clock> clear_end;
+std::chrono::time_point<std::chrono::steady_clock> sort_start;
+std::chrono::time_point<std::chrono::steady_clock> sort_end;
+std::chrono::time_point<std::chrono::steady_clock> pq_start;
+std::chrono::time_point<std::chrono::steady_clock> pq_end;
+std::chrono::time_point<std::chrono::steady_clock> compress_start;
+std::chrono::time_point<std::chrono::steady_clock> compress_end;
+std::chrono::time_point<std::chrono::steady_clock> gen_tree_start;
+std::chrono::time_point<std::chrono::steady_clock> gen_tree_end;
+std::chrono::time_point<std::chrono::steady_clock> balance_start;
+std::chrono::time_point<std::chrono::steady_clock> balance_end;
 
 
 /********
@@ -51,21 +77,44 @@ int* balancedWeights = nullptr;		// storing weights of each edge after balance f
 void generateSpanningTree(UndirectedGraph_t& graph, UnionFind& uf_mst)
 {
 	// generate the random weights for each edge for MST
+	gen_random_start = std::chrono::steady_clock::now();
+	#ifdef TEST_CORRECTNESS
 	for (int edgeId = 0; edgeId < E; ++edgeId)	
 	{
 		edge_mst_buf[edgeId].rand_w = rand();
 		inMST[edgeId] = false;
 	}
+	#else
+	int randnum = rand();
+	#pragma omp parallel
+	{
+		unsigned int randseed = randnum * omp_get_thread_num();
+		#pragma omp for
+		for (int edgeId = 0; edgeId < E; ++edgeId)	
+		{
+			edge_mst_buf[edgeId].rand_w = rand_r(&randseed);
+			inMST[edgeId] = false;
+		}
+	}
+	#endif
+	gen_random_end = std::chrono::steady_clock::now();
+
 
 	// find the mst
+	find_mst_start = std::chrono::steady_clock::now();
 	findMST(graph, uf_mst, edge_mst_buf, edge_mst_queue);
+	find_mst_end = std::chrono::steady_clock::now();
+
+
+	compress_start = std::chrono::steady_clock::now();
+	for (int nodeId = 0; nodeId < V; ++nodeId)
+		uf_mst.find(nodeId);
+	compress_end = std::chrono::steady_clock::now();
 }
 
 void balanceSpanningTree(UndirectedGraph_t& graph, UnionFind& uf_mst)
 {
-	for (int nodeId = 0; nodeId < V; ++nodeId)
-		uf_mst.find(nodeId);
-
+	#pragma omp parallel for
 	for (int edgeId = 0; edgeId < E; ++edgeId)
 	{
 		int w = graph.edges[edgeId].w;
@@ -206,13 +255,27 @@ int main(int argc, char** argv)
 	for (int i = 0; i < iterations; ++i)
 	{
 		// generate spanning tree
-		auto gen_tree_start = std::chrono::steady_clock::now();
+		gen_tree_start = std::chrono::steady_clock::now();
 		generateSpanningTree(graph, uf_mst);
-		auto gen_tree_end = std::chrono::steady_clock::now();
-
-		auto balance_start = std::chrono::steady_clock::now();
+		gen_tree_end = std::chrono::steady_clock::now();
+		
+		
+		balance_start = std::chrono::steady_clock::now();
 		balanceSpanningTree(graph, uf_mst);
-		auto balance_end = std::chrono::steady_clock::now();
+		balance_end = std::chrono::steady_clock::now();
+
+
+		#ifdef PROFILING
+		std::cout << std::endl << "iterations = " << i << std::endl;
+		std::cout << "gen tree: " << (double)(((std::chrono::duration<double>)(gen_tree_end - gen_tree_start)).count()) << "secs" << std::endl;
+		std::cout << "+---> gen random numbers: " << (double)(((std::chrono::duration<double>)(gen_random_end - gen_random_start)).count()) << "secs" << std::endl;
+		std::cout << "+---> find mst: " << (double)(((std::chrono::duration<double>)(find_mst_end - find_mst_start)).count()) << "secs" << std::endl;
+		std::cout << "      +---> clear mst: " << (double)(((std::chrono::duration<double>)(clear_end - clear_start)).count()) << "secs" << std::endl;
+		std::cout << "      +---> sort: " << (double)(((std::chrono::duration<double>)(sort_end - sort_start)).count()) << "secs" << std::endl;
+		std::cout << "      +---> loop pq: " << (double)(((std::chrono::duration<double>)(pq_end - pq_start)).count()) << "secs" << std::endl;
+		std::cout << "+---> path compress: " << (double)(((std::chrono::duration<double>)(compress_end - compress_start)).count()) << "secs" << std::endl;
+		std::cout << "balance tree: " << (double)(((std::chrono::duration<double>)(balance_end - balance_start)).count()) << "secs" << std::endl;
+		#endif
 
 		#ifdef DEBUG_MAIN
 		std::cout << std::endl;
@@ -229,8 +292,7 @@ int main(int argc, char** argv)
 
 
 	auto end_time = std::chrono::steady_clock::now();
-    std::chrono::duration<double> diff = end_time - start_time;
-    double seconds = diff.count();
+    double seconds = (end_time - start_time).count();
 
     // Release Resource
 	if (save_filepath != nullptr)

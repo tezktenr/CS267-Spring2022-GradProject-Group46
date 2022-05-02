@@ -3,7 +3,7 @@ This page explains the format of specifying a graph in a text file.
 
 ## General Format
 ```
-From Node ID, To Node ID, Edge Weight
+From Node ID,To Node ID,Weight
 V1,V2,1
 V2,V3,-1
 ...
@@ -26,7 +26,7 @@ Note:
 The graph above could be represented in the text file as:
 
 ```
-From Node ID, To Node ID, Edge Weight
+From Node ID,To Node ID,Weight
 0,1,1
 0,2,1
 2,3,1
