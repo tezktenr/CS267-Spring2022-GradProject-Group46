@@ -26,6 +26,9 @@
 /********
  * GLOBAL MEM
  ***/
+// seed
+unsigned int seed;
+
 // number of edges
 int E = 0;
 
@@ -53,19 +56,21 @@ void generateSpanningTree(UndirectedGraph_t& graph, UnionFind& uf_mst)
 	// generate the random weights for each edge for MST
 	for (int edgeId = 0; edgeId < E; ++edgeId)	
 	{
-		edge_mst_buf[edgeId].rand_w = rand();
+		edge_mst_buf[edgeId].edge_id = edgeId;
+		int rw = rand_r(&seed);
+		edge_mst_buf[edgeId].rand_w = rw;
 		inMST[edgeId] = false;
 	}
 
 	// find the mst
 	findMST(graph, uf_mst, edge_mst_buf, edge_mst_queue);
+
+	for (int nodeId = 0; nodeId < V; ++nodeId)
+		uf_mst.find(nodeId);
 }
 
 void balanceSpanningTree(UndirectedGraph_t& graph, UnionFind& uf_mst)
 {
-	for (int nodeId = 0; nodeId < V; ++nodeId)
-		uf_mst.find(nodeId);
-
 	for (int edgeId = 0; edgeId < E; ++edgeId)
 	{
 		int w = graph.edges[edgeId].w;
@@ -194,10 +199,7 @@ int main(int argc, char** argv)
 	}
 
 	// Parse -s
-	int seed = find_int_arg(argc, argv, "-s", time(nullptr));
-
-	// setting the seed
-	srand(seed);
+	seed = find_int_arg(argc, argv, "-s", time(nullptr));
 
 	// Main Algorithms	
 	auto start_time = std::chrono::steady_clock::now();

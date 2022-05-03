@@ -76,11 +76,11 @@ void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst, edge_w* edge_mst_buf, 
 		int v1 = graph.edges[edgeId].v1;
 		int v2 = graph.edges[edgeId].v2;
 		int w = graph.edges[edgeId].w;
+
 		if (uf_mst.union_set(v1, v2, w))
 		{
 			numEdgesInMST++;
 			inMST[edgeId] = true;
 		}
 	}
-
 }
