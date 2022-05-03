@@ -1,5 +1,5 @@
-# Storing Graphs in TXT File
-This page explains the format of specifying a graph in a text file.
+# Storing Graphs in CSV File
+This page explains the format of specifying a graph in a Comma-Seperated CSV file.
 
 ## General Format
 ```
@@ -23,7 +23,7 @@ Note:
 ## Example
 ![alt text](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/sample-graphs/pic_sample_graph.png "Sample Graph Picture")
 
-The graph above could be represented in the text file as:
+The graph above could be represented in the csv file [sample_graph.csv](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/sample-graphs/sample_graph.csv) shown below:
 
 ```
 From Node ID,To Node ID,Weight
