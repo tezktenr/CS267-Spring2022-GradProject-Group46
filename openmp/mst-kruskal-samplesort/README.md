@@ -1,5 +1,5 @@
-# OpenMP Implementation (Kruskal with PMerge)
-This is the OpenMP implementation (Kruskal with PMerge) for finding the set of nearest balanced states of a signed graph
+# OpenMP Implementation (Kruskal with Parallel Sample Sort)
+This is the OpenMP implementation (Kruskal with Parallel Sample Sort) for finding the set of nearest balanced states of a signed graph
 
 ## Building Our Code
 First, we need to make sure that the CMake module is loaded and that the GNU compiler is selected.
