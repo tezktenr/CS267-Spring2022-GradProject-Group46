@@ -21,7 +21,7 @@
 /********
  * PRE-PROCESSOR
  ***/
-#define IMPL_NAME "Openmp - Kruskal PMerge"
+#define IMPL_NAME "Openmp - Kruskal Parallel Sample Sort"
 
 #define PROFILING
 //#define TEST_CORRECTNESS
@@ -52,6 +52,9 @@ std::chrono::time_point<std::chrono::steady_clock> balance_end;
 /********
  * GLOBAL MEM
  ***/
+// total number of threads
+unsigned int P;
+
 // seed
 unsigned int seed;
 
@@ -72,6 +75,13 @@ edge_w* edge_mst_queue = nullptr;	// the queue of edges for MST based on random 
 bool* inMST = nullptr;				// storing whether edge is in MST for each iteration
 
 int* balancedWeights = nullptr;		// storing weights of each edge after balance for each iteration
+
+// data structure for sample sort
+unsigned int threads_used_in_sorting;	// number of threads used for sorting
+
+edge_w* local_edges = nullptr;		// local list used for sample sort 
+
+int* bucket_starts = nullptr;		// starting index for each bucket
 
 
 /********
@@ -138,6 +148,13 @@ void balanceSpanningTree(UndirectedGraph_t& graph, UnionFind& uf_mst)
 /********
 * HELPER FUNCTIONS
 ***/
+void release_edge_array(edge_w* e)
+{
+//	for (int i = 0; i < E; ++i)
+//		delete e[i];
+	delete[] e;
+}
+
 void print_balanced_state_MST(UndirectedGraph_t& graph)
 {
 	for (int edgeId = 0; edgeId < E; ++edgeId)
@@ -250,6 +267,22 @@ int main(int argc, char** argv)
 	// Parse -s
 	seed = find_int_arg(argc, argv, "-s", time(nullptr));
 
+	// set the number of threads
+	#pragma omp parallel default(none) shared(E, P, threads_used_in_sorting)
+	{
+		#pragma omp single
+		{
+			P = omp_get_num_threads();
+
+			threads_used_in_sorting = P;
+			while (threads_used_in_sorting > 1 && threads_used_in_sorting * threads_used_in_sorting >= E)
+				threads_used_in_sorting--;
+		}
+	}
+	local_edges = new edge_w[(threads_used_in_sorting-1)*threads_used_in_sorting];
+	bucket_starts = new int[threads_used_in_sorting];
+
+
 	// Main Algorithms	
 	auto start_time = std::chrono::steady_clock::now();
 
@@ -299,7 +332,14 @@ int main(int argc, char** argv)
     // Release Resource
 	if (save_filepath != nullptr)
 		savefile.close();
-    
+	
+	delete[] edge_mst_buf;
+	delete[] edge_mst_queue;
+	delete[] inMST;
+	delete[] balancedWeights;
+	delete[] local_edges;
+	delete[] bucket_starts;
+
 	// Finalize
 	std::cout << "Runtime (" << IMPL_NAME << ") = " << seconds << " seconds" << std::endl;
 

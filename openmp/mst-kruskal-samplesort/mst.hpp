@@ -18,6 +18,10 @@ struct edge_w {
 	int rand_w;
 };
 
+struct bucket {
+	int currId;
+};
+
 
 /********
  * MST FUNCTIONS
