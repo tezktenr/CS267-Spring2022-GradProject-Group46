@@ -94,6 +94,16 @@ class UnionFind {
 			}
 		}
 
+		int parallel_find(const int node)
+		{
+			int p;
+			
+			#pragma omp atomic read
+			p = parent[node];
+
+			return (p == node)?node:find(p);
+		}
+
 		bool union_set(const int node1, const int node2)
 		{
 			int p1 = find(node1);

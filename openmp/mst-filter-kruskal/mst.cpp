@@ -3,6 +3,8 @@
  ***/
 #include <iostream>
 #include <chrono>
+#include <vector>
+#include <utility>
 #include <algorithm>
 
 #include <omp.h>
@@ -14,6 +16,7 @@
 /********
  * PRE-PROCESSOR
  ***/
+#define KRUSKAL_THRESHOLD 1000
 //#define DEBUG_SORTING
 
 
@@ -25,7 +28,11 @@ extern algorithm_params params;
 extern common_data common;
 extern mst_data mst;
 extern sample_sort_data ssort;
+extern filter_kruskal_data fkruskal;
 
+std::chrono::time_point<std::chrono::steady_clock> start;
+std::chrono::time_point<std::chrono::steady_clock> end;
+double sync_time = 0;
 
 /********
 * HELPER FUNCTIONS
@@ -49,6 +56,8 @@ edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int thre
 	std::cout << "n = " << n << std::endl;
 	std::cout << "threads_used = " << threads_used << std::endl;
 	*/
+	if (n <= 0)
+		return edge_src;
 
 	if (threads_used <= 1)
 	{
@@ -94,13 +103,6 @@ edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int thre
 
 			if (has_enough_threads)
 			{
-				/*
-				#pragma omp single
-				{
-					std::cout << "start sort" << std::endl;	
-				}
-				*/
-
 				int t_begin = -1;
 				int t_end = -1;
 				if (tid < threads_used)
@@ -125,29 +127,6 @@ edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int thre
 					}
 				}
 				#pragma omp barrier
-			
-				/*	
-				#pragma omp single
-				{
-					std::cout << "finish sampling" << std::endl;
-				}
-				*/
-
-				/*
-				#pragma omp single
-				{	
-					std::cout << "edge_src:" << std::endl;
-					for (int i = 0; i < n; ++i)
-						std::cout << " " << edge_src[i].rand_w << " ";
-					std::cout << std::endl;
-
-					std::cout << "local_edges:" << std::endl;
-					for (int i = 0; i < num_samples_per_thread*threads_used; ++i)
-						std::cout << " " << local_edges[i].rand_w << " ";
-					std::cout << std::endl;
-				}
-				*/
-				
 
 				#pragma omp single
 				{
@@ -155,25 +134,8 @@ edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int thre
 					std::sort(sample_edges, sample_edges+num_samples_per_thread*threads_used, compare_edge_w);
 				}
 
-				/*
-				#pragma omp single
-				{
-					std::cout << "finish sorting samples" << std::endl;
-					for (int i = 0; i < num_samples_per_thread*threads_used; ++i)
-						std::cout << " " << local_edges[i].rand_w << " ";
-					std::cout << std::endl;
-				}
-				*/
-				
 				// use "threads_used - 1" number of splitters
 				const int gap_betw_splitters = (num_samples_per_thread*threads_used) / (threads_used - 1);
-				
-				/*
-				#pragma omp single
-				{
-					std::cout << "gap_betw_splitters = " << gap_betw_splitters << std::endl;
-				}
-				*/
 
 				// organize the elements based on the global splitters
 				int curr_src_idx = t_begin;
@@ -182,10 +144,6 @@ edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int thre
 				{
 					#pragma omp single
 					{
-						/*
-						std::cout << "start new bucket " << i << " at " << dst_idx << std::endl;
-						*/
-						
 						// start index for each bucket
 						bucket_starts[i] = dst_idx;
 					}
@@ -230,13 +188,6 @@ edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int thre
 					#pragma omp barrier
 				}
 
-				/*
-				#pragma omp single
-				{
-					std::cout << "finish assigning buckets" << std::endl;
-				}
-				*/
-
 				if (tid < threads_used)
 				{
 					// sort each bucket individually
@@ -262,6 +213,215 @@ edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int thre
 
 
 /********
+* FILTER KRUSKAL ALGORITHM
+***/
+int kruskal(UndirectedGraph_t& graph, UnionFind& uf_mst, const int remaining_edges, 
+			edge_w* edge_src, edge_w* edge_dst, const int n)
+{
+	// sort the edge based on random weights
+	edge_w* sorted_edges = parallel_sample_sort(edge_src, edge_dst, n, ssort.thread_nums);
+	
+	// finding the MST
+	int numEdgesInMST = 0;
+	for (int i = 0; i < n; ++i)
+	{
+		if (numEdgesInMST >= remaining_edges)
+			break;
+		
+		int edgeId = sorted_edges[i].edge_id;
+		int v1 = graph.edges[edgeId].v1;
+		int v2 = graph.edges[edgeId].v2;
+		int w = graph.edges[edgeId].w;
+		if (uf_mst.union_set(v1, v2, w))
+		{
+			numEdgesInMST++;
+			mst.inMST[edgeId] = true;
+		}
+	}
+	return numEdgesInMST;
+}
+
+int pick_pivot(edge_w* e, int n)
+{
+	const int rand_num = (*(fkruskal.rand_int))(fkruskal.generator);
+	const int pivot_idx = rand_num % n;
+	return e[pivot_idx].rand_w;
+}
+
+std::pair<int, int> partition(edge_w* edge_src, const int n,
+							  const int pivot, edge_w* l_partition, edge_w* h_partition)
+{
+	int l_idx = 0;
+	int h_idx = 0;
+	
+	/*
+	#pragma omp parallel for num_threads(68) default(none) shared(edge_src, n, pivot, l_partition, h_partition, l_idx, h_idx)
+	for (int i = 0; i < n; ++i)
+	{
+		int idx_to_store;
+		
+		if (edge_src[i].rand_w <= pivot)
+		{
+			#pragma omp atomic capture
+			idx_to_store = l_idx++;						
+
+			l_partition[idx_to_store] = edge_src[i];
+		}
+		else
+		{
+			#pragma omp atomic capture
+			idx_to_store = h_idx++;						
+
+			h_partition[idx_to_store] = edge_src[i];
+		}
+	}
+	*/
+
+	if (n >= 1000)
+	{
+		#pragma omp parallel for default(none) shared(edge_src, n, pivot, l_partition, h_partition, l_idx, h_idx) schedule(static)
+		for (int i = 0; i < n; ++i)
+		{
+			int idx_to_store;
+			
+			if (edge_src[i].rand_w <= pivot)
+			{
+				#pragma omp atomic capture
+				idx_to_store = l_idx++;						
+
+				l_partition[idx_to_store] = edge_src[i];
+			}
+			else
+			{
+				#pragma omp atomic capture
+				idx_to_store = h_idx++;						
+
+				h_partition[idx_to_store] = edge_src[i];
+			}
+		}
+	}
+	else
+	{
+		for (int i = 0; i < n; ++i)
+		{
+			int idx_to_store;
+			
+			if (edge_src[i].rand_w <= pivot)
+				l_partition[l_idx++] = edge_src[i];
+			else
+				h_partition[h_idx++] = edge_src[i];
+		}
+	}
+	
+	return std::make_pair(l_idx, h_idx);
+}
+
+int filter(UndirectedGraph_t& graph, UnionFind& uf_mst,
+		   edge_w* edge_src, edge_w* edge_dst, const int n)
+{
+	int filter_len = 0;
+
+	/*	
+	#pragma omp parallel for num_threads(68) default(none) shared(graph, uf_mst, edge_src, edge_dst, n, filter_len)
+	for (int i = 0; i < n; ++i)
+	{
+		const int edgeId = edge_src[i].edge_id;
+		const int v1 = graph.edges[edgeId].v1;
+		const int v2 = graph.edges[edgeId].v2;
+		if (uf_mst.parallel_find(v1) != uf_mst.parallel_find(v2))
+		{
+			int idx_to_store;
+			
+			#pragma omp atomic capture
+			idx_to_store = filter_len++;
+
+			edge_dst[idx_to_store] = edge_src[i];
+		}
+	}
+	*/
+
+	if (n >= 1000)
+	{
+		#pragma omp parallel for num_threads(68) default(none) shared(graph, uf_mst, edge_src, edge_dst, n, filter_len)
+		for (int i = 0; i < n; ++i)
+		{
+			const int edgeId = edge_src[i].edge_id;
+			const int v1 = graph.edges[edgeId].v1;
+			const int v2 = graph.edges[edgeId].v2;
+			if (uf_mst.parallel_find(v1) != uf_mst.parallel_find(v2))
+			{
+				int idx_to_store;
+				
+				#pragma omp atomic capture
+				idx_to_store = filter_len++;
+
+				edge_dst[idx_to_store] = edge_src[i];
+			}
+		}
+	}
+	else
+	{
+		for (int i = 0; i < n; ++i)
+		{
+			const int edgeId = edge_src[i].edge_id;
+			const int v1 = graph.edges[edgeId].v1;
+			const int v2 = graph.edges[edgeId].v2;
+			if (uf_mst.find(v1) != uf_mst.find(v2))
+				edge_dst[filter_len++] = edge_src[i];
+		}
+	}
+
+	return filter_len;
+}
+
+int filter_kruskal(UndirectedGraph_t& graph, UnionFind& uf_mst, const int remaining_edges,
+				   edge_w* edge_src, edge_w* edge_dst, const int n)
+{
+	if (n < KRUSKAL_THRESHOLD)
+		return kruskal(graph, uf_mst, remaining_edges, edge_src, edge_dst, n);
+	else
+	{
+		/* std::cout << "recurse on filter_kruskal" << std::endl; */
+		
+		// pick a random pivot from source array
+		const int pivot = pick_pivot(edge_src, n);
+		
+		/* std::cout << "finshied picking pivot" << std::endl; */
+
+		// partitioning using the pivot
+		edge_w* l_partition = new edge_w[n];
+		edge_w* h_partition = new edge_w[n];
+		
+		
+		std::pair<int, int> partition_lens = partition(edge_src, n, pivot, l_partition, h_partition);
+
+
+		const int l_len = partition_lens.first;
+		const int h_len = partition_lens.second;
+
+		/* std::cout << "finished partitioning - l_len = " << l_len << " ; " << "h_len = " << h_len << std::endl; */
+
+		// filtering
+		const int a_len = filter_kruskal(graph, uf_mst, remaining_edges, l_partition, edge_dst, l_len);
+		
+		
+		const int filter_len = filter(graph, uf_mst, h_partition, l_partition, h_len);	// using the l_partition as a buffer for storing the filtered edges
+		
+
+		const int b_len = filter_kruskal(graph, uf_mst, remaining_edges-a_len, l_partition, edge_dst+a_len, filter_len);
+
+		/* std::cout << "starting to release mem" << std::endl; */
+
+		// release memory
+		delete[] l_partition;
+		delete[] h_partition;
+
+		return a_len + b_len;
+	}
+}
+
+
+/********
 * SOURCE
 ***/
 void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst)
@@ -272,6 +432,13 @@ void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst)
 	profiling.clear_end = std::chrono::steady_clock::now();
 
 
+	profiling.f_kruskal_start = std::chrono::steady_clock::now();
+	// the filter kruskal algorithm
+	filter_kruskal(graph, uf_mst, params.V-1, mst.edge_mst_buf, mst.edge_mst_queue, params.E);
+	profiling.f_kruskal_end = std::chrono::steady_clock::now();
+
+
+	/*
 	#ifdef DEBUG_SORTING
 	std::cout << "<<<<<<<<<<<<<<<<<<<<" << std::endl;
 	print_edge_array(mst.edge_mst_buf, params.E);
@@ -307,4 +474,5 @@ void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst)
 		}
 	}
 	profiling.pq_end = std::chrono::steady_clock::now();
+	*/
 }

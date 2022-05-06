@@ -6,6 +6,7 @@
  ***/
 #include <iostream>
 #include <chrono>
+#include <random>
 
 #include "mst.hpp"
 
@@ -25,10 +26,12 @@ struct profile_times {
 	std::chrono::time_point<std::chrono::steady_clock> find_mst_end;
 	std::chrono::time_point<std::chrono::steady_clock> clear_start;
 	std::chrono::time_point<std::chrono::steady_clock> clear_end;
-	std::chrono::time_point<std::chrono::steady_clock> sort_start;
-	std::chrono::time_point<std::chrono::steady_clock> sort_end;
-	std::chrono::time_point<std::chrono::steady_clock> pq_start;
-	std::chrono::time_point<std::chrono::steady_clock> pq_end;
+	//std::chrono::time_point<std::chrono::steady_clock> sort_start;
+	//std::chrono::time_point<std::chrono::steady_clock> sort_end;
+	//std::chrono::time_point<std::chrono::steady_clock> pq_start;
+	//std::chrono::time_point<std::chrono::steady_clock> pq_end;
+	std::chrono::time_point<std::chrono::steady_clock> f_kruskal_start;
+	std::chrono::time_point<std::chrono::steady_clock> f_kruskal_end;
 	std::chrono::time_point<std::chrono::steady_clock> compress_start;
 	std::chrono::time_point<std::chrono::steady_clock> compress_end;
 	std::chrono::time_point<std::chrono::steady_clock> gen_tree_start;
@@ -125,6 +128,22 @@ struct sample_sort_data {
 			delete[] bucket_starts;
 	}
 };
+
+
+struct filter_kruskal_data {
+	// source of randomness
+	std::default_random_engine generator;
+
+	// uniform int generator for pivot selection
+	std::uniform_int_distribution<int>* rand_int;
+
+	// -----------------------------
+	// destructor for memory release
+	// -----------------------------
+	~filter_kruskal_data() 
+	{}
+};
+
 
 
 #endif

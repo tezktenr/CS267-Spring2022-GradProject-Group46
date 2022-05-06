@@ -22,7 +22,7 @@
 /********
  * PRE-PROCESSOR
  ***/
-#define IMPL_NAME "Openmp - Kruskal Parallel Sample Sort"
+#define IMPL_NAME "Openmp - Filter Kruskal"
 
 #define PROFILING
 //#define TEST_CORRECTNESS
@@ -46,6 +46,9 @@ mst_data mst;
 
 // Sample sort data structure
 sample_sort_data ssort;
+
+// Filter kruskal data structure
+filter_kruskal_data fkruskal;
 
 
 /********
@@ -111,7 +114,7 @@ void balanceSpanningTree(UndirectedGraph_t& graph, UnionFind& uf_mst)
 	int* balancedWeights = common.balancedWeights;	
 	bool* inMST = mst.inMST;
 
-	#pragma omp parallel for default(none) shared(graph, uf_mst, params, inMST, balancedWeights)
+	#pragma omp parallel for num_threads(68) default(none) shared(graph, uf_mst, params, inMST, balancedWeights)
 	for (int edgeId = 0; edgeId < params.E; ++edgeId)
 	{
 		int w = graph.edges[edgeId].w;
@@ -124,7 +127,6 @@ void balanceSpanningTree(UndirectedGraph_t& graph, UnionFind& uf_mst)
 			balancedWeights[edgeId] = w * w * uf_mst.toParent[v1] * uf_mst.toParent[v2];
 		}
 	}
-
 	
 	// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 	profiling.balance_end = std::chrono::steady_clock::now();
@@ -246,6 +248,12 @@ int main(int argc, char** argv)
 	ssort.sample_edges = new edge_w[(ssort.thread_nums-1)*ssort.thread_nums];
 	ssort.bucket_starts = new int[ssort.thread_nums];
 
+	// Initialize filter-kruskal data structure
+	std::uniform_int_distribution<int> rand_int(0, params.E);
+	fkruskal.rand_int = &rand_int;
+	//fkruskal.light_partition = new edge_w[params.E];
+	//fkruskal.heavy_partition = new edge_w[params.E];	
+
 	// Parse -o: correctness output file
 	char* save_filepath = find_string_option(argc, argv, "-o", nullptr);
 	std::ofstream savefile(save_filepath);
@@ -279,8 +287,7 @@ int main(int argc, char** argv)
 		std::cout << "+---> gen random numbers: " << profiling.time(profiling.gen_random_start, profiling.gen_random_end) << "secs" << std::endl;
 		std::cout << "+---> find mst: " << profiling.time(profiling.find_mst_start, profiling.find_mst_end) << "secs" << std::endl;
 		std::cout << "      +---> clear mst: " << profiling.time(profiling.clear_start, profiling.clear_end) << "secs" << std::endl;
-		std::cout << "      +---> sort: " << profiling.time(profiling.sort_start, profiling.sort_end) << "secs" << std::endl;
-		std::cout << "      +---> loop pq: " << profiling.time(profiling.pq_start, profiling.pq_end) << "secs" << std::endl;
+		std::cout << "      +---> filter kruskal: " << profiling.time(profiling.f_kruskal_start, profiling.f_kruskal_end) << "secs" << std::endl;
 		std::cout << "+---> path compress: " << profiling.time(profiling.compress_start, profiling.compress_end) << "secs" << std::endl;
 		std::cout << "balance tree: " << profiling.time(profiling.balance_start, profiling.balance_end) << "secs" << std::endl;
 		#endif
