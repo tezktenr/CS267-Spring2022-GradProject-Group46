@@ -6,7 +6,11 @@ Students:
 - Yonghao Zhu
 
 
-## Folders
+## Code Directories
 - **sample-graphs**: contains the sample graphs' data files
 - **serial**: contains the serial implementation
+- **openmp**: contains the openmp implementations
+  - **mst-kruskal-pmerge**: contains the parallel merge sort implementation
+  - **mst-kruskal-samplesort**: contains the parallel sample sort implementation 
+  - **mst-filter-kruskal**: contains the filter-kruskal implementation 
 
