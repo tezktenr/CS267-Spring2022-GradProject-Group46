@@ -16,7 +16,7 @@
 /********
  * PRE-PROCESSOR
  ***/
-#define KRUSKAL_THRESHOLD 1000
+#define KRUSKAL_THRESHOLD 750
 //#define DEBUG_SORTING
 
 
@@ -279,7 +279,7 @@ std::pair<int, int> partition(edge_w* edge_src, const int n,
 
 	if (n >= 1000)
 	{
-		#pragma omp parallel for default(none) shared(edge_src, n, pivot, l_partition, h_partition, l_idx, h_idx) schedule(static)
+		#pragma omp parallel for default(none) shared(edge_src, n, pivot, l_partition, h_partition, l_idx, h_idx) schedule(static, 10)
 		for (int i = 0; i < n; ++i)
 		{
 			int idx_to_store;
@@ -392,9 +392,10 @@ int filter_kruskal(UndirectedGraph_t& graph, UnionFind& uf_mst, const int remain
 		edge_w* l_partition = new edge_w[n];
 		edge_w* h_partition = new edge_w[n];
 		
-		
+		start = std::chrono::steady_clock::now();
 		std::pair<int, int> partition_lens = partition(edge_src, n, pivot, l_partition, h_partition);
-
+		end = std::chrono::steady_clock::now();
+		sync_time += profiling.time(start, end);
 
 		const int l_len = partition_lens.first;
 		const int h_len = partition_lens.second;
@@ -432,11 +433,14 @@ void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst)
 	profiling.clear_end = std::chrono::steady_clock::now();
 
 
+	sync_time = 0;
+
 	profiling.f_kruskal_start = std::chrono::steady_clock::now();
 	// the filter kruskal algorithm
 	filter_kruskal(graph, uf_mst, params.V-1, mst.edge_mst_buf, mst.edge_mst_queue, params.E);
 	profiling.f_kruskal_end = std::chrono::steady_clock::now();
 
+	std::cout << std::endl << "sync_time = " << sync_time << std::endl;
 
 	/*
 	#ifdef DEBUG_SORTING
