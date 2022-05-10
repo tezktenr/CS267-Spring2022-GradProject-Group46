@@ -2,6 +2,7 @@
  * INCLUDE HEADER
  ***/
 #include <iostream>
+#include <chrono>
 #include "mst.hpp"
 
 
@@ -53,18 +54,33 @@ void serial_merge_sort(edge_w* edge_src, edge_w* edge_dst, int n)
 /********
 * SOURCE
 ***/
+// for profiling
+extern std::chrono::time_point<std::chrono::steady_clock> clear_start;
+extern std::chrono::time_point<std::chrono::steady_clock> clear_end;
+extern std::chrono::time_point<std::chrono::steady_clock> sort_start;
+extern std::chrono::time_point<std::chrono::steady_clock> sort_end;
+extern std::chrono::time_point<std::chrono::steady_clock> pq_start;
+extern std::chrono::time_point<std::chrono::steady_clock> pq_end;
+
+
+
 extern int E;
 extern int V;
 extern bool* inMST;
 
 void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst, edge_w* edge_mst_buf, edge_w* edge_mst_queue)
 {
+	clear_start = std::chrono::steady_clock::now();
 	// reset union find tree
 	uf_mst.clear();
+	clear_end = std::chrono::steady_clock::now();
 
+	sort_start = std::chrono::steady_clock::now();
 	// sort the edge based on random weights
 	serial_merge_sort(edge_mst_buf, edge_mst_queue, E);
+	sort_end = std::chrono::steady_clock::now();
 
+	pq_start = std::chrono::steady_clock::now();
 	// finding the MST
 	int numEdgesInMST = 0;
 	for (int i = 0; i < E; ++i)
@@ -83,4 +99,6 @@ void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst, edge_w* edge_mst_buf, 
 			inMST[edgeId] = true;
 		}
 	}
+	pq_end = std::chrono::steady_clock::now();
+
 }

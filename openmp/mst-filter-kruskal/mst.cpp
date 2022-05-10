@@ -16,9 +16,10 @@
 /********
  * PRE-PROCESSOR
  ***/
-#define KRUSKAL_THRESHOLD 750
-//#define DEBUG_SORTING
+#define KRUSKAL_THRESHOLD 550000
 
+//#define DEBUG_SORTING
+//#define DEBUG_SYNC_OVERHEAD
 
 /********
  * GLOBAL MEM
@@ -30,9 +31,14 @@ extern mst_data mst;
 extern sample_sort_data ssort;
 extern filter_kruskal_data fkruskal;
 
-std::chrono::time_point<std::chrono::steady_clock> start;
-std::chrono::time_point<std::chrono::steady_clock> end;
-double sync_time = 0;
+std::chrono::time_point<std::chrono::steady_clock> partition_start;
+std::chrono::time_point<std::chrono::steady_clock> partition_end;
+double partition_time = 0;
+std::chrono::time_point<std::chrono::steady_clock> filter_start;
+std::chrono::time_point<std::chrono::steady_clock> filter_end;
+double filter_time = 0;
+
+
 
 /********
 * HELPER FUNCTIONS
@@ -48,6 +54,49 @@ void print_edge_array(edge_w* edge_arr, const int n)
 /********
 * SORTING
 ***/
+void serial_merge(edge_w* A, int A_len, edge_w* B, int B_len, edge_w* C)
+{
+	int a_idx = 0;
+	int b_idx = 0;
+	for (int i = 0; i < A_len+B_len; ++i)
+	{
+		if (b_idx >= B_len || (a_idx < A_len && A[a_idx].rand_w <= B[b_idx].rand_w))
+			C[i] = A[a_idx++];
+		else
+			C[i] = B[b_idx++];
+	}
+}
+
+void serial_merge_sort(edge_w* edge_src, edge_w* edge_dst, int n)
+{
+	if (n == 1)
+		edge_dst[0] = edge_src[0];
+	else if (n > 1)
+	{
+		// calculate the middle index
+		int mid = n / 2;
+
+		// divide array into two halves
+		edge_w* first_half = edge_src;
+		int first_len = mid;
+		edge_w* second_half = edge_src + mid;
+		int second_len = n - mid;
+
+		// recurse on each half
+		serial_merge_sort(first_half, edge_dst, first_len);
+		serial_merge_sort(second_half, edge_dst+mid, second_len);
+		
+		// merge the two halves
+		serial_merge(first_half, first_len, second_half, second_len, edge_dst);
+
+		// save to src (necessary step for correctness)
+		for (int i = 0; i < n; ++i)
+			edge_src[i] = edge_dst[i];
+	}
+}
+
+
+
 bool compare_edge_w(const edge_w& e1, const edge_w& e2) { return e1.rand_w < e2.rand_w; }
 
 edge_w* parallel_sample_sort(edge_w* edge_src, edge_w* edge_dst, int n, int threads_used)
@@ -220,7 +269,9 @@ int kruskal(UndirectedGraph_t& graph, UnionFind& uf_mst, const int remaining_edg
 {
 	// sort the edge based on random weights
 	edge_w* sorted_edges = parallel_sample_sort(edge_src, edge_dst, n, ssort.thread_nums);
-	
+	////serial_merge_sort(edge_src, edge_dst, n);
+	////edge_w* sorted_edges = edge_dst;		
+
 	// finding the MST
 	int numEdgesInMST = 0;
 	for (int i = 0; i < n; ++i)
@@ -243,41 +294,41 @@ int kruskal(UndirectedGraph_t& graph, UnionFind& uf_mst, const int remaining_edg
 
 int pick_pivot(edge_w* e, int n)
 {
-	const int rand_num = (*(fkruskal.rand_int))(fkruskal.generator);
-	const int pivot_idx = rand_num % n;
+	const int pivot_idx = n / 2;
 	return e[pivot_idx].rand_w;
 }
 
-std::pair<int, int> partition(edge_w* edge_src, const int n,
-							  const int pivot, edge_w* l_partition, edge_w* h_partition)
+void partition(edge_w* edge_src, const int n, const int pivot, std::vector<edge_w>& l_partition, std::vector<edge_w>& h_partition)
 {
-	int l_idx = 0;
-	int h_idx = 0;
-	
-	/*
-	#pragma omp parallel for num_threads(68) default(none) shared(edge_src, n, pivot, l_partition, h_partition, l_idx, h_idx)
-	for (int i = 0; i < n; ++i)
+	#pragma omp parallel num_threads(68) default(none) shared(edge_src, n, pivot, l_partition, h_partition)
 	{
-		int idx_to_store;
-		
-		if (edge_src[i].rand_w <= pivot)
-		{
-			#pragma omp atomic capture
-			idx_to_store = l_idx++;						
+		std::vector<edge_w> local_l;
+		std::vector<edge_w> local_h;
 
-			l_partition[idx_to_store] = edge_src[i];
+		#pragma omp for nowait
+		for (int i = 0; i < n; ++i)
+		{
+			if (edge_src[i].rand_w <= pivot)
+				local_l.push_back(edge_src[i]);
+			else
+				local_h.push_back(edge_src[i]);
 		}
-		else
-		{
-			#pragma omp atomic capture
-			idx_to_store = h_idx++;						
 
-			h_partition[idx_to_store] = edge_src[i];
+		if (local_l.size() > 0)
+		{
+			#pragma omp critical
+			l_partition.insert(l_partition.end(), local_l.begin(), local_l.end());
+		}
+
+		if (local_h.size() > 0)
+		{
+			#pragma omp critical
+			h_partition.insert(h_partition.end(), local_h.begin(), local_h.end());
 		}
 	}
-	*/
 
-	if (n >= 1000)
+	/*
+	if (n >= 10000000)
 	{
 		#pragma omp parallel for default(none) shared(edge_src, n, pivot, l_partition, h_partition, l_idx, h_idx) schedule(static, 10)
 		for (int i = 0; i < n; ++i)
@@ -312,35 +363,37 @@ std::pair<int, int> partition(edge_w* edge_src, const int n,
 				h_partition[h_idx++] = edge_src[i];
 		}
 	}
-	
 	return std::make_pair(l_idx, h_idx);
+	*/
 }
 
-int filter(UndirectedGraph_t& graph, UnionFind& uf_mst,
-		   edge_w* edge_src, edge_w* edge_dst, const int n)
+void filter(UndirectedGraph_t& graph, UnionFind& uf_mst, std::vector<edge_w>& edge_src, std::vector<edge_w>& edge_dst, const int n)
 {
-	int filter_len = 0;
+	edge_dst.clear();
 
-	/*	
-	#pragma omp parallel for num_threads(68) default(none) shared(graph, uf_mst, edge_src, edge_dst, n, filter_len)
-	for (int i = 0; i < n; ++i)
+	#pragma omp parallel num_threads(68) default(none) shared(graph, uf_mst, edge_src, edge_dst, n)
 	{
-		const int edgeId = edge_src[i].edge_id;
-		const int v1 = graph.edges[edgeId].v1;
-		const int v2 = graph.edges[edgeId].v2;
-		if (uf_mst.parallel_find(v1) != uf_mst.parallel_find(v2))
-		{
-			int idx_to_store;
-			
-			#pragma omp atomic capture
-			idx_to_store = filter_len++;
+		std::vector<edge_w> local;
 
-			edge_dst[idx_to_store] = edge_src[i];
+		#pragma omp for nowait
+		for (int i = 0; i < n; ++i)
+		{
+			const int edgeId = edge_src[i].edge_id;
+			const int v1 = graph.edges[edgeId].v1;
+			const int v2 = graph.edges[edgeId].v2;
+			if (uf_mst.parallel_find(v1) != uf_mst.parallel_find(v2))
+				local.push_back(edge_src[i]);
+		}
+
+		if (local.size() > 0)
+		{
+			#pragma omp critical
+			edge_dst.insert(edge_dst.end(), local.begin(), local.end());
 		}
 	}
-	*/
 
-	if (n >= 1000)
+	/*
+	if (n >= 10000000)
 	{
 		#pragma omp parallel for num_threads(68) default(none) shared(graph, uf_mst, edge_src, edge_dst, n, filter_len)
 		for (int i = 0; i < n; ++i)
@@ -370,8 +423,8 @@ int filter(UndirectedGraph_t& graph, UnionFind& uf_mst,
 				edge_dst[filter_len++] = edge_src[i];
 		}
 	}
-
 	return filter_len;
+	*/
 }
 
 int filter_kruskal(UndirectedGraph_t& graph, UnionFind& uf_mst, const int remaining_edges,
@@ -389,33 +442,41 @@ int filter_kruskal(UndirectedGraph_t& graph, UnionFind& uf_mst, const int remain
 		/* std::cout << "finshied picking pivot" << std::endl; */
 
 		// partitioning using the pivot
-		edge_w* l_partition = new edge_w[n];
-		edge_w* h_partition = new edge_w[n];
+		std::vector<edge_w> l_partition;
+		std::vector<edge_w> h_partition;
 		
-		start = std::chrono::steady_clock::now();
-		std::pair<int, int> partition_lens = partition(edge_src, n, pivot, l_partition, h_partition);
-		end = std::chrono::steady_clock::now();
-		sync_time += profiling.time(start, end);
-
-		const int l_len = partition_lens.first;
-		const int h_len = partition_lens.second;
+		#ifdef DEBUG_SYNC_OVERHEAD
+		partition_start = std::chrono::steady_clock::now();
+		#endif
+		
+		partition(edge_src, n, pivot, l_partition, h_partition);
+		
+		#ifdef DEBUG_SYNC_OVERHEAD
+		partition_end = std::chrono::steady_clock::now();
+		partition_time += profiling.time(partition_start, partition_end);
+		#endif
 
 		/* std::cout << "finished partitioning - l_len = " << l_len << " ; " << "h_len = " << h_len << std::endl; */
 
 		// filtering
-		const int a_len = filter_kruskal(graph, uf_mst, remaining_edges, l_partition, edge_dst, l_len);
-		
-		
-		const int filter_len = filter(graph, uf_mst, h_partition, l_partition, h_len);	// using the l_partition as a buffer for storing the filtered edges
+		const int a_len = filter_kruskal(graph, uf_mst, remaining_edges, &l_partition[0], edge_dst, l_partition.size());
 		
 
-		const int b_len = filter_kruskal(graph, uf_mst, remaining_edges-a_len, l_partition, edge_dst+a_len, filter_len);
+		#ifdef DEBUG_SYNC_OVERHEAD
+		filter_start = std::chrono::steady_clock::now();
+		#endif
+		
+		filter(graph, uf_mst, h_partition, l_partition, h_partition.size());	// using the l_partition as a buffer for storing the filtered edges
+		
+		#ifdef DEBUG_SYNC_OVERHEAD
+		filter_end = std::chrono::steady_clock::now();
+		filter_time += profiling.time(filter_start, filter_end);
+		#endif
+
+
+		const int b_len = filter_kruskal(graph, uf_mst, remaining_edges-a_len, &l_partition[0], edge_dst+a_len, l_partition.size());
 
 		/* std::cout << "starting to release mem" << std::endl; */
-
-		// release memory
-		delete[] l_partition;
-		delete[] h_partition;
 
 		return a_len + b_len;
 	}
@@ -432,15 +493,23 @@ void findMST(UndirectedGraph_t& graph, UnionFind& uf_mst)
 	uf_mst.clear();
 	profiling.clear_end = std::chrono::steady_clock::now();
 
+	
 
-	sync_time = 0;
+	#ifdef DEBUG_SYNC_OVERHEAD
+	partition_time = 0;
+	filter_time = 0;
+	#endif
 
 	profiling.f_kruskal_start = std::chrono::steady_clock::now();
 	// the filter kruskal algorithm
 	filter_kruskal(graph, uf_mst, params.V-1, mst.edge_mst_buf, mst.edge_mst_queue, params.E);
 	profiling.f_kruskal_end = std::chrono::steady_clock::now();
 
-	std::cout << std::endl << "sync_time = " << sync_time << std::endl;
+
+	#ifdef DEBUG_SYNC_OVERHEAD
+	std::cout << "partition_time = " << partition_time << std::endl;
+	std::cout << "filter_time = " << filter_time << std::endl;
+	#endif
 
 	/*
 	#ifdef DEBUG_SORTING

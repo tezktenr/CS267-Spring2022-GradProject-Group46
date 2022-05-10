@@ -32,5 +32,5 @@ add_executable(serial main.cpp mst.cpp mst.hpp graph.hpp union_find.hpp)
 #target_link_libraries(openmp PRIVATE OpenMP::OpenMP_CXX)
 
 # Copy the job scripts
-#configure_file(job-serial job-serial COPYONLY)
+configure_file(job-serial job-serial COPYONLY)
 #configure_file(job-openmp job-openmp COPYONLY)
