@@ -37,6 +37,14 @@ Then, we could run the code via:
 student@cori04:~/gradproj/build> sbatch job-openmp
 ```
 
+## Running Our Code
+We recommend running our code using the "[job-openmp](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/openmp/mst-kruskal-samplesort/job-openmp)" script provided. As an example, modify the parameters inside the "job-openmp" script as needed and follow the steps below to run the code on the [CORI server](https://docs.nersc.gov/systems/cori/):
+```
+student@cori04:~/gradproj/build> sbatch job-openmp
+```
+
+
+
 ## Profiling
 You should uncomment the the following macro in "main.cpp" and **recompile** to perform profiling:
 ```C++
