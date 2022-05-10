@@ -1,5 +1,5 @@
-# OpenMP Implementation (Kruskal with Parallel Sample Sort)
-This is the OpenMP implementation (Kruskal with Parallel Sample Sort) for finding the set of nearest balanced states of a signed graph
+# OpenMP Implementation (Filter Kruskal)
+This is the OpenMP implementation (Filter Kruskal) for finding the set of nearest balanced states of a signed graph
 
 ## Building Our Code
 First, we need to make sure that the CMake module is loaded and that the GNU compiler is selected.
@@ -64,3 +64,10 @@ Then, run with
 student@cori04:~/gradproj/build> sbatch job-openmp
 ```
 
+## Tuning KRUSKAL_THRESHOLD
+To tune the parameter in the Filter-Kruskal Algorithm, go to the file "[mst.cpp](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/openmp/mst-filter-kruskal/mst.cpp)" and modify the following macro:
+```C++
+#define KRUSKAL_THRESHOLD 550000
+```
+
+Then, you must **recompile** and rerun the code with the same steps shown above.
