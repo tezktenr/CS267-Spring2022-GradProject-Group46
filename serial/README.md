@@ -47,6 +47,19 @@ Check the Usage:
   -s <seed_num>: the seed number
 ```
 
+## Running Our Code
+
+We recommend running our code using the "[job-serial](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/serial/job-serial)" script provided. As an example, modify the parameters inside the "job-serial" script as needed and follow the steps below to run the code on the [CORI server](https://docs.nersc.gov/systems/cori/):
+```
+student@cori04:~/gradproj/build> sbatch job-serial
+```
+
+You could also run the code without the batch script:
+```
+student@cori04:~/gradproj/build> ./serial -f ../../sample-graphs/sample_graph.csv -n 1000
+```
+
+
 ## Checking Correctness
 To check the correctness for the code on "[sample_graph.csv](https://github.com/tezktenr/CS267-Spring2022-GradProject-Group46/blob/main/sample-graphs/sample_graph.csv)" with seed 1:
 ```
