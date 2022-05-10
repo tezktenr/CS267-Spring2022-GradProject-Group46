@@ -11,5 +11,15 @@ export OMP_PLACES=cores
 export OMP_PROC_BIND=spread
 
 #run the application:
-srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/graph2.csv -n 1000 -s 1 -o openmp.out
-#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/amazonDigitalMusic_core5_edges2.csv -n 1000
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/graph2.csv -n 1000 -s 31 -o openmp.out
+
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/amazonDigitalMusic_core5_edges2.csv -n 1000 -s 1
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/amazonMusicalInstruments_core5_edges2.csv -n 1000 -s 1
+srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/amazonVideo_core5_edges2.csv -n 1000 -s 1
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/all_wiki_edges.csv -n 1000 -s 1
+
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/Amazon_Android_edges2.csv -n 1000 -s 1
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/Amazon_Games_edges2.csv -n 1000 -s 1
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/Amazon_Baby_edges2.csv -n 1000 -s 1
+#srun -n 1 -c 68 --cpu_bind=cores ./openmp -f ../../../sample-graphs/big-graphs/Amazon_Automotive_edges2.csv -n 1000 -s 1
+
